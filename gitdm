@@ -15,7 +15,7 @@
 
 import database, csvdump, ConfigFile, reports
 import getopt, datetime
-import os, re, sys, rfc822, string
+import os, re, sys, rfc822, string, os.path
 import logparser
 from patterns import patterns
 
@@ -45,7 +45,7 @@ Numstat = 0
 ReportByFileType = 0
 ReportUnknowns = False
 CompanyFilter = None
-
+FileReport = None
 #
 # Options:
 #
@@ -55,6 +55,7 @@ CompanyFilter = None
 # -C company	Only consider patches from <company>
 # -d		Output individual developer stats
 # -D		Output date statistics
+# -f file	Write touched-files report to <file>
 # -h hfile	HTML output to hfile
 # -l count	Maximum length for output lists
 # -n        Use numstats instead of generated patch from git log
@@ -73,9 +74,9 @@ def ParseOpts():
     global MapUnknown, DevReports
     global DateStats, AuthorSOBs, FileFilter, AkpmOverLt, DumpDB
     global CFName, CSVFile, CSVPrefix,DirName, Aggregate, Numstat
-    global ReportByFileType, ReportUnknowns, CompanyFilter
+    global ReportByFileType, ReportUnknowns, CompanyFilter, FileReport
 
-    opts, rest = getopt.getopt(sys.argv[1:], 'ab:dC:c:Dh:l:no:p:r:stUuwx:yz')
+    opts, rest = getopt.getopt(sys.argv[1:], 'ab:dC:c:Df:h:l:no:p:r:stUuwx:yz')
     for opt in opts:
         if opt[0] == '-a':
             AkpmOverLt = 1
@@ -89,6 +90,8 @@ def ParseOpts():
             DevReports = 0
         elif opt[0] == '-D':
             DateStats = 1
+        elif opt[0] == '-f':
+            FileReport = opt[1]
         elif opt[0] == '-h':
             reports.SetHTMLOutput(open(opt[1], 'w'))
         elif opt[0] == '-l':
@@ -120,6 +123,26 @@ def ParseOpts():
         elif opt[0] == '-z':
             DumpDB = 1
         
+#
+# Tracking for file accesses.
+#
+FileAccesses = { }
+
+def AddAccess(path):
+    try:
+        FileAccesses[path] += 1
+    except KeyError:
+        FileAccesses[path] = 1
+
+def NoteFileAccess(path):
+    if path.startswith('a/') or path.startswith('b/'):
+        path = path[2:]
+    AddAccess(path)
+    path, last = os.path.split(path)
+    while path and path not in ['a', 'b', '/']:
+        AddAccess(path)
+        path, last = os.path.split(path)
+
 
 
 def LookupStoreHacker(name, email):
@@ -177,6 +200,7 @@ class patch:
         self.testers = [ ]
         self.reports = [ ]
         self.filetypes = {}
+        self.files = [ ]
 
     def addreviewer(self, reviewer):
         self.reviews.append(reviewer)
@@ -193,6 +217,10 @@ class patch:
             self.filetypes[filetype][self.REMOVED] += removed
         else:
             self.filetypes[filetype] = [added, removed]
+
+    def addfile(self, name):
+        self.files.append(name)
+
 
 def parse_numstat(line, file_filter):
     """
@@ -232,6 +260,7 @@ def grabpatch(logpatch):
 
     p = patch(m.group(1))
     ignore = (FileFilter is not None)
+    need_bline = False
     for Line in logpatch[1:]:
         #
         # Maybe it's an author line?
@@ -307,6 +336,24 @@ def grabpatch(logpatch):
             if FileFilter:
                 ignore = ApplyFileFilter(Line, ignore)
             #
+            # If we are tracking files touched, look for a relevant line here.
+            #
+            if FileReport and not ignore:
+                m = patterns['filea'].match(Line)
+                if m:
+                    file = m.group(1)
+                    if file == '/dev/null':
+                        need_bline = True
+                        continue
+                    p.addfile(m.group(1))
+                    continue
+                elif need_bline:
+                    m = patterns['fileb'].match(Line)
+                    if m:
+                        p.addfile(m.group(1))
+                    need_bline = False
+                    continue
+            #
             # OK, maybe it's part of the diff itself.
             #
             if not ignore:
@@ -316,13 +363,15 @@ def grabpatch(logpatch):
                 if patterns['rem'].match(Line):
                     p.removed += 1
         else:
-            # Get the statistics (lines added/removes) using numstats
-            # and without requiring a diff (--numstat instead -p)
-			(filename, filetype, added, removed) = parse_numstat(Line, FileFilter)
-			if filename:
-			    p.added += added
-			    p.removed += removed
-			    p.addfiletype(filetype, added, removed)
+            #
+            # Grab data in the numstat format.
+            #
+            (filename, filetype, added, removed) = parse_numstat(Line, FileFilter)
+            if filename:
+                p.added += added
+                p.removed += removed
+                p.addfiletype(filetype, added, removed)
+                p.addfile(filename)
 
     if '@' in p.author.name:
         GripeAboutAuthorName(p.author.name)
@@ -436,9 +485,14 @@ for logpatch in patches:
     # Apply the company filter if it exists.
     #
     empl = p.author.emailemployer(p.email, p.date)
-    print CompanyFilter, empl.name
     if CompanyFilter and empl.name != CompanyFilter:
         continue
+    #
+    # Now note the file accesses if need be.
+    #
+    if FileReport:
+        for file in p.files:
+            NoteFileAccess(file)
     #
     # Record some global information - but only if this patch had
     # stuff which wasn't ignored.
@@ -511,3 +565,6 @@ reports.EmplReports(elist, TotalChanged, CSCount)
 
 if ReportByFileType and Numstat:
     reports.ReportByFileType(hlist)
+
+if FileReport:
+    reports.FileAccessReport(FileReport, FileAccesses)

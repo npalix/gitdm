@@ -3,8 +3,8 @@
 #
 # This code is part of the LWN git data miner.
 #
-# Copyright 2007-12 Eklektix, Inc.
-# Copyright 2007-12 Jonathan Corbet <corbet@lwn.net>
+# Copyright 2007-13 Eklektix, Inc.
+# Copyright 2007-13 Jonathan Corbet <corbet@lwn.net>
 #
 # This file may be distributed under the terms of the GNU General
 # Public License, version 2.
@@ -451,3 +451,14 @@ def ReportByFileType (hacker_list):
     BeginReport ('General contributions by type')
     for filetype, (added, removed, hackers) in total.iteritems():
         print filetype, added, removed
+
+#
+# The file access report is a special beast.
+#
+def FileAccessReport(name, accesses):
+    outf = open(name, 'w')
+    files = accesses.keys()
+    files.sort()
+    for file in files:
+        outf.write('%6d %s\n' % (accesses[file], file))
+    outf.close()
