@@ -44,6 +44,7 @@ Aggregate = 'month'
 Numstat = 0
 ReportByFileType = 0
 ReportUnknowns = False
+CompanyFilter = None
 
 #
 # Options:
@@ -51,6 +52,7 @@ ReportUnknowns = False
 # -a		Andrew Morton's signoffs shadow Linus's
 # -b dir	Specify the base directory to fetch the configuration files
 # -c cfile	Specify a configuration file
+# -C company	Only consider patches from <company>
 # -d		Output individual developer stats
 # -D		Output date statistics
 # -h hfile	HTML output to hfile
@@ -71,14 +73,16 @@ def ParseOpts ():
     global MapUnknown, DevReports
     global DateStats, AuthorSOBs, FileFilter, AkpmOverLt, DumpDB
     global CFName, CSVFile, CSVPrefix,DirName, Aggregate, Numstat
-    global ReportByFileType, ReportUnknowns
+    global ReportByFileType, ReportUnknowns, CompanyFilter
 
-    opts, rest = getopt.getopt (sys.argv[1:], 'ab:dc:Dh:l:no:p:r:stUuwx:yz')
+    opts, rest = getopt.getopt (sys.argv[1:], 'ab:dC:c:Dh:l:no:p:r:stUuwx:yz')
     for opt in opts:
         if opt[0] == '-a':
             AkpmOverLt = 1
         elif opt[0] == '-b':
             DirName = opt[1]
+        elif opt[0] == '-C':
+            CompanyFilter = opt[1]
         elif opt[0] == '-c':
             CFName = opt[1]
         elif opt[0] == '-d':
@@ -428,7 +432,13 @@ for logpatch in patches:
 #        continue
     if FileFilter and p.added == 0 and p.removed == 0:
         continue
-
+    #
+    # Apply the company filter if it exists.
+    #
+    empl = p.author.emailemployer(p.email, p.date)
+    print CompanyFilter, empl.name
+    if CompanyFilter and empl.name != CompanyFilter:
+        continue
     #
     # Record some global information - but only if this patch had
     # stuff which wasn't ignored.
@@ -438,7 +448,6 @@ for logpatch in patches:
         TotalRemoved += p.removed
         TotalChanged += max (p.added, p.removed)
         AddDateLines (p.date, max (p.added, p.removed))
-        empl = p.author.emailemployer (p.email, p.date)
         empl.AddCSet (p)
         if AkpmOverLt:
             TrimLTSOBs (p)
