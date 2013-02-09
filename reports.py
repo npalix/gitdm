@@ -455,10 +455,11 @@ def ReportByFileType(hacker_list):
 #
 # The file access report is a special beast.
 #
-def FileAccessReport(name, accesses):
+def FileAccessReport(name, accesses, total):
     outf = open(name, 'w')
     files = accesses.keys()
     files.sort()
     for file in files:
-        outf.write('%6d %s\n' % (accesses[file], file))
+        a = accesses[file]
+        outf.write('%6d %6.1f%% %s\n' % (a, (100.0*a)/total, file))
     outf.close()

@@ -134,14 +134,24 @@ def AddAccess(path):
     except KeyError:
         FileAccesses[path] = 1
 
-def NoteFileAccess(path):
-    if path.startswith('a/') or path.startswith('b/'):
-        path = path[2:]
-    AddAccess(path)
-    path, last = os.path.split(path)
-    while path and path not in ['a', 'b', '/']:
+def NoteFileAccess(paths):
+    #
+    # Keep separate track of what we've noted in this set so that each level
+    # of the tree only gets a single note from one patch.
+    #
+    noted = [ ]
+    for path in paths:
+        if path.startswith('a/') or path.startswith('b/'):
+            path = path[2:]
         AddAccess(path)
+        noted.append(path)
         path, last = os.path.split(path)
+        while path and path not in ['a', 'b', '/']:
+            if path in noted:
+                break
+            noted.append(path)
+            AddAccess(path)
+            path, last = os.path.split(path)
 
 
 
@@ -491,8 +501,7 @@ for logpatch in patches:
     # Now note the file accesses if need be.
     #
     if FileReport:
-        for file in p.files:
-            NoteFileAccess(file)
+        NoteFileAccess(p.files)
     #
     # Record some global information - but only if this patch had
     # stuff which wasn't ignored.
@@ -567,4 +576,4 @@ if ReportByFileType and Numstat:
     reports.ReportByFileType(hlist)
 
 if FileReport:
-    reports.FileAccessReport(FileReport, FileAccesses)
+    reports.FileAccessReport(FileReport, FileAccesses, CSCount)
