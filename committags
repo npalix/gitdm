@@ -25,7 +25,7 @@ input = os.popen(git, 'r')
 DB = { }
 Tag = 'None'
 
-tagline = re.compile(r'^commit ([\da-f]+) .*tag: (v2\.6\.\d\d?)')
+tagline = re.compile(r'^commit ([\da-f]+) .*tag: (v2\.6\.\d\d?|v3.\d\d?)')
 commit = re.compile(r'^commit ([\da-f]+)')
 
 for line in input.readlines():
